@@ -100,6 +100,22 @@
 
         <!-- ==================== TAB 1: 퀴즈 (말해보카 모드) ==================== -->
         <section id="section-quiz" class="space-y-4">
+            <!-- Resume Progress Banner -->
+            <div id="resume-banner" class="bg-gradient-to-r from-indigo-50 to-emerald-50 border border-indigo-100/80 rounded-2xl p-3 flex justify-between items-center shadow-2xs">
+                <div class="flex items-center space-x-2.5">
+                    <div class="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-black text-xs shadow-xs">
+                        <i class="fa-solid fa-bookmark"></i>
+                    </div>
+                    <div>
+                        <span class="text-[10px] text-slate-400 font-extrabold block">이전 학습 진도</span>
+                        <span id="resume-text" class="text-xs font-black text-indigo-900">Lv.1 왕초보 (1번 문제)</span>
+                    </div>
+                </div>
+                <button onclick="resumeLastProgress()" class="bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-black px-3.5 py-1.5 rounded-xl shadow-xs transition flex items-center">
+                    이어서 풀기 <i class="fa-solid fa-chevron-right ml-1 text-[10px]"></i>
+                </button>
+            </div>
+
             <!-- Problem Header & Navigation -->
             <div class="flex justify-between items-center bg-white px-4 py-3 rounded-2xl shadow-sm border border-slate-200/80">
                 <span id="quiz-category" class="text-xs bg-indigo-50 text-indigo-600 px-3 py-1 rounded-full font-extrabold flex items-center">
@@ -316,6 +332,39 @@
                         <span id="stat-wrong" class="text-lg font-black text-amber-600">0개</span>
                     </div>
                 </div>
+            <!-- Attendance & Daily Progress Calendar Card -->
+            <div class="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 space-y-4">
+                <div class="flex justify-between items-center">
+                    <h4 class="font-black text-sm text-slate-800 flex items-center">
+                        <i class="fa-solid fa-calendar-check mr-2 text-indigo-600 text-base"></i> 나의 출석부 & 진도 일지
+                    </h4>
+                    <span id="attendance-today-badge" class="text-[11px] px-2.5 py-1 rounded-full font-black bg-amber-100 text-amber-900">
+                        오늘 미출석 (1문제 풀면 출석!)
+                    </span>
+                </div>
+
+                <!-- Calendar View -->
+                <div class="bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/70 space-y-2.5">
+                    <div class="flex justify-between items-center px-1">
+                        <span id="calendar-month-year" class="text-xs font-black text-slate-700">2026년 10월</span>
+                        <span class="text-xs text-indigo-600 font-extrabold">
+                            총 <span id="attendance-total-days" class="text-sm font-black">0</span>일 출석 달성 💮
+                        </span>
+                    </div>
+
+                    <div class="grid grid-cols-7 gap-1 text-center text-[10px] font-bold text-slate-400">
+                        <span class="text-rose-400">일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span class="text-indigo-400">토</span>
+                    </div>
+
+                    <div id="calendar-days-grid" class="grid grid-cols-7 gap-1.5 text-center text-xs font-bold">
+                        <!-- Generated dynamically -->
+                    </div>
+                </div>
+
+                <!-- Selected Date Detail Report -->
+                <div id="selected-date-detail" class="bg-indigo-50/40 p-3.5 rounded-2xl border border-indigo-100 space-y-2 text-xs">
+                    <!-- Dynamic details for selected date -->
+                </div>
             </div>
 
             <!-- League Tier Information Table -->
@@ -361,7 +410,7 @@
             <span id="review-count-badge" class="absolute top-0 right-2 bg-rose-500 text-white text-[9px] px-1.5 py-0.2 rounded-full font-bold hidden">0</span>
         </button>
         <button onclick="switchTab('stats')" id="nav-stats" class="flex flex-col items-center py-1 px-3 text-slate-400 font-bold text-[11px] hover:text-indigo-600 transition">
-            <i class="fa-solid fa-chart-simple text-lg mb-0.5"></i> 내 리그
+            <i class="fa-solid fa-calendar-check text-lg mb-0.5"></i> 출석 & 리그
         </button>
     </nav>
 
@@ -471,6 +520,12 @@
         let comboCount = 0;
         let streakDays = parseInt(localStorage.getItem('myVocaStreak') || '1');
         let hintStep = 0; // 0: no hint, 1: first letter, 2: second letter, 3: nuance
+
+        // Attendance & Daily Progress States
+        let attendanceLog = JSON.parse(localStorage.getItem('myVocaAttendanceLog') || '{}');
+        let lastProgress = JSON.parse(localStorage.getItem('myVocaLastProgress') || 'null');
+        let calendarYear = new Date().getFullYear();
+        let calendarMonth = new Date().getMonth(); // 0-indexed (0=Jan, 9=Oct)
 
         // Audio & TTS States
         let speechRate = 1.0;
@@ -694,6 +749,7 @@
             renderLetterSlots(q.eng, '');
             updateBookmarkButton();
             updateReviewBadge();
+            updateResumeBanner();
         }
 
         // 말해보카 시그니처: 실시간 글자수 슬롯 [ _ ][ _ ][ _ ][ _ ] 렌더링
@@ -793,6 +849,7 @@
 
                 // Speak sentence automatically
                 speakText(q.full);
+                recordDailyProgress(true, bonusPoints);
 
                 if (isReviewMode) {
                     q.streak = (q.streak || 0) + 1;
@@ -819,6 +876,7 @@
                     <div class="text-xs text-slate-700 font-mono bg-white p-2 rounded-lg border border-amber-200">${q.full}</div>
                 `;
                 speakText(q.full);
+                recordDailyProgress(true, 5);
             }
             // 3. Incorrect Answer
             else {
@@ -835,6 +893,7 @@
 
                 speakText(q.full);
                 addToReview(q);
+                recordDailyProgress(false, 0);
             }
         }
 
@@ -1106,6 +1165,211 @@
                 renderReviewList();
                 showToast("오답노트를 초기화했습니다.");
             }
+        // ==========================================
+        // 8-1. ATTENDANCE & DAILY PROGRESS ENGINE
+        // ==========================================
+        function getTodayString() {
+            const d = new Date();
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
+        function getYesterdayString() {
+            const d = new Date();
+            d.setDate(d.getDate() - 1);
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
+        function recordDailyProgress(isCorrect, pointsGained) {
+            const today = getTodayString();
+            const q = getActiveQuizList()[quizIdx];
+            const isFirstToday = !attendanceLog[today];
+
+            if (isFirstToday) {
+                attendanceLog[today] = {
+                    date: today,
+                    solvedCount: 0,
+                    correctCount: 0,
+                    expGained: 0,
+                    lastLevel: currentLevel,
+                    lastLevelName: levelNames[currentLevel - 1],
+                    lastIndex: quizIdx + 1,
+                    lastWord: q ? q.eng : '',
+                    lastSentence: q ? q.kor : '',
+                    lastTime: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
+                };
+
+                const yesterday = getYesterdayString();
+                if (attendanceLog[yesterday]) {
+                    streakDays = (parseInt(localStorage.getItem('myVocaStreak') || '1')) + 1;
+                } else {
+                    streakDays = 1;
+                }
+                localStorage.setItem('myVocaStreak', streakDays);
+
+                addExp(20);
+                confetti({ particleCount: 90, spread: 70, origin: { y: 0.5 } });
+                showToast(`💮 오늘 출석 체크 완료! (+20 EXP 보너스, ${streakDays}일 연속 출석 🔥)`);
+            }
+
+            attendanceLog[today].solvedCount++;
+            if (isCorrect) attendanceLog[today].correctCount++;
+            attendanceLog[today].expGained += pointsGained;
+            attendanceLog[today].lastLevel = currentLevel;
+            attendanceLog[today].lastLevelName = levelNames[currentLevel - 1];
+            attendanceLog[today].lastIndex = quizIdx + 1;
+            attendanceLog[today].lastWord = q ? q.eng : '';
+            attendanceLog[today].lastSentence = q ? q.kor : '';
+            attendanceLog[today].lastTime = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+
+            localStorage.setItem('myVocaAttendanceLog', JSON.stringify(attendanceLog));
+
+            lastProgress = {
+                level: currentLevel,
+                index: quizIdx,
+                levelName: levelNames[currentLevel - 1],
+                word: q ? q.eng : '',
+                sentence: q ? q.kor : '',
+                date: today,
+                time: attendanceLog[today].lastTime
+            };
+            localStorage.setItem('myVocaLastProgress', JSON.stringify(lastProgress));
+
+            updateResumeBanner();
+            renderAttendanceCalendar();
+        }
+
+        function updateResumeBanner() {
+            const resumeEl = document.getElementById('resume-text');
+            if (!resumeEl) return;
+            if (lastProgress) {
+                resumeEl.innerText = `${lastProgress.levelName} (${lastProgress.index + 1}번 문제 - ${lastProgress.word})`;
+            } else {
+                const q = getActiveQuizList()[quizIdx];
+                resumeEl.innerText = `${levelNames[currentLevel - 1]} (${quizIdx + 1}번 문제 - ${q ? q.eng : ''})`;
+            }
+        }
+
+        function resumeLastProgress() {
+            if (!lastProgress) {
+                showToast("기록된 이전 진도가 없습니다. 1번 문제부터 시작합니다.");
+                return;
+            }
+            isReviewMode = false;
+            currentLevel = lastProgress.level;
+            quizIdx = lastProgress.index;
+            localStorage.setItem('myVocaLevel', currentLevel);
+            document.getElementById('level-badge').innerText = `Lv.${currentLevel} ${levelNames[currentLevel - 1]}`;
+            switchTab('quiz');
+            loadQuiz();
+            showToast(`📌 ${lastProgress.levelName} ${quizIdx + 1}번 문제부터 이어서 시작합니다!`);
+        }
+
+        function renderAttendanceCalendar() {
+            const monthNames = ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"];
+            const monthEl = document.getElementById('calendar-month-year');
+            if (monthEl) monthEl.innerText = `${calendarYear}년 ${monthNames[calendarMonth]}`;
+
+            const totalDaysAttended = Object.keys(attendanceLog).length;
+            const totalDaysEl = document.getElementById('attendance-total-days');
+            if (totalDaysEl) totalDaysEl.innerText = totalDaysAttended;
+
+            const todayStr = getTodayString();
+            const todayBadge = document.getElementById('attendance-today-badge');
+            if (todayBadge) {
+                if (attendanceLog[todayStr]) {
+                    todayBadge.className = "text-[11px] px-2.5 py-1 rounded-full font-black bg-emerald-100 text-emerald-800 flex items-center";
+                    todayBadge.innerHTML = `<i class="fa-solid fa-circle-check mr-1 text-emerald-600"></i> 오늘 출석 완료 (${attendanceLog[todayStr].solvedCount}문제 학습)`;
+                } else {
+                    todayBadge.className = "text-[11px] px-2.5 py-1 rounded-full font-black bg-amber-100 text-amber-900";
+                    todayBadge.innerHTML = `오늘 미출석 (1문제 풀면 출석! 🎁 +20 EXP)`;
+                }
+            }
+
+            const grid = document.getElementById('calendar-days-grid');
+            if (!grid) return;
+
+            const firstDayIndex = new Date(calendarYear, calendarMonth, 1).getDay();
+            const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+
+            let html = '';
+            for (let i = 0; i < firstDayIndex; i++) {
+                html += `<div class="p-1 text-slate-200"></div>`;
+            }
+
+            for (let d = 1; d <= daysInMonth; d++) {
+                const dayStr = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                const hasAttended = !!attendanceLog[dayStr];
+                const isToday = dayStr === todayStr;
+
+                let cellClass = "p-1.5 rounded-2xl flex flex-col items-center justify-center cursor-pointer transition relative ";
+                if (hasAttended) {
+                    cellClass += "bg-emerald-500 text-white shadow-xs hover:bg-emerald-600 active:scale-95";
+                } else if (isToday) {
+                    cellClass += "bg-indigo-50 text-indigo-700 border-2 border-indigo-400 font-black hover:bg-indigo-100";
+                } else {
+                    cellClass += "bg-slate-50 text-slate-600 hover:bg-slate-100";
+                }
+
+                const stamp = hasAttended ? `<span class="text-[9px] block leading-none mt-0.5">💮</span>` : `<span class="text-[9px] block leading-none mt-0.5 opacity-0">-</span>`;
+
+                html += `
+                    <div onclick="selectCalendarDate('${dayStr}')" class="${cellClass}" title="${dayStr}">
+                        <span class="text-xs leading-none">${d}</span>
+                        ${stamp}
+                    </div>
+                `;
+            }
+
+            grid.innerHTML = html;
+            selectCalendarDate(todayStr);
+        }
+
+        function selectCalendarDate(dateStr) {
+            const detailBox = document.getElementById('selected-date-detail');
+            if (!detailBox) return;
+
+            const record = attendanceLog[dateStr];
+            if (record) {
+                const rate = record.solvedCount > 0 ? Math.round((record.correctCount / record.solvedCount) * 100) : 0;
+                detailBox.innerHTML = `
+                    <div class="flex justify-between items-center border-b border-indigo-200/60 pb-1.5">
+                        <span class="font-black text-slate-800 text-xs"><i class="fa-solid fa-calendar-day mr-1 text-indigo-600"></i> ${dateStr} 학습 일지</span>
+                        <span class="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">출석 완료 💮</span>
+                    </div>
+                    <div class="grid grid-cols-3 gap-1.5 py-1 text-center">
+                        <div class="bg-white p-1.5 rounded-xl border border-slate-100">
+                            <span class="text-[10px] text-slate-400 block font-bold">푼 문제</span>
+                            <span class="font-black text-indigo-700 text-sm">${record.solvedCount}개</span>
+                        </div>
+                        <div class="bg-white p-1.5 rounded-xl border border-slate-100">
+                            <span class="text-[10px] text-slate-400 block font-bold">정답률</span>
+                            <span class="font-black text-emerald-600 text-sm">${rate}%</span>
+                        </div>
+                        <div class="bg-white p-1.5 rounded-xl border border-slate-100">
+                            <span class="text-[10px] text-slate-400 block font-bold">획득 EXP</span>
+                            <span class="font-black text-amber-600 text-sm">+${record.expGained}</span>
+                        </div>
+                    </div>
+                    <div class="pt-1 flex items-center justify-between text-xs text-slate-700">
+                        <span>🚀 <b>마지막 진도:</b> ${record.lastLevelName} ${record.lastIndex}번 (${record.lastWord})</span>
+                        <span class="text-[10px] text-slate-400 font-mono">${record.lastTime || ''}</span>
+                    </div>
+                `;
+            } else {
+                detailBox.innerHTML = `
+                    <div class="flex justify-between items-center text-slate-500">
+                        <span class="font-bold"><i class="fa-solid fa-calendar-day mr-1"></i> ${dateStr}</span>
+                        <span class="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">학습 기록 없음</span>
+                    </div>
+                    <p class="text-[11px] text-slate-400 pt-1">이 날은 학습 기록이 없습니다. 매일 1문제씩 풀고 출석 도장을 모아보세요!</p>
+                `;
+            }
         }
 
         // ==========================================
@@ -1129,7 +1393,10 @@
             if (tab === 'flashcard') loadFlashCard();
             if (tab === 'voca') renderVocaList();
             if (tab === 'review') renderReviewList();
-            if (tab === 'stats') updateExpUI();
+            if (tab === 'stats') {
+                updateExpUI();
+                renderAttendanceCalendar();
+            }
         }
 
         function showToast(msg) {
@@ -1147,6 +1414,8 @@
         window.onload = () => {
             initTTS();
             updateExpUI();
+            updateResumeBanner();
+            renderAttendanceCalendar();
             document.getElementById('level-badge').innerText = `Lv.${currentLevel} ${levelNames[currentLevel - 1]}`;
             loadQuiz();
             renderVocaList();
